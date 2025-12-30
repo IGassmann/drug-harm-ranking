@@ -62,6 +62,7 @@ interface StudyInfo {
   name: string;
   fullName: string;
   journal: string;
+  link: string;
   color: string;
   description: string;
   hasCriteriaData: boolean;
@@ -72,6 +73,7 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     name: 'UK 2010',
     fullName: 'Nutt et al. (2010)',
     journal: 'The Lancet',
+    link: 'https://doi.org/10.1016/S0140-6736(10)61462-6',
     color: '#6366f1',
     description:
       'The foundational gold-standard MCDA study. Used 16 harm criteria with swing weighting. Published in The Lancet (highest impact factor). Most cited drug harm ranking study.',
@@ -81,6 +83,7 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     name: 'Australia 2019',
     fullName: 'Bonomo et al. (2019)',
     journal: 'J Psychopharmacology',
+    link: 'https://doi.org/10.1177/0269881119841569',
     color: '#22c55e',
     description:
       'Rigorous MCDA replication with diverse Australian experts. Added supplementary prevalence-adjusted analysis to account for local usage patterns. High methodological quality.',
@@ -90,6 +93,7 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     name: 'New Zealand 2023',
     fullName: 'Crossin et al. (2023)',
     journal: 'J Psychopharmacology',
+    link: 'https://doi.org/10.1177/02698811231182012',
     color: '#f97316',
     description:
       'Most methodologically advanced study. Added culturally-relevant criteria including indigenous perspectives and youth-specific harm analysis. Most recent data reflects current drug landscape.',
@@ -99,6 +103,7 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     name: 'Europe 2015',
     fullName: 'van Amsterdam et al. (2015)',
     journal: 'J Psychopharmacology',
+    link: 'https://doi.org/10.1177/0269881115581980',
     color: '#ec4899',
     description:
       'EU-wide expert panel providing international perspective. Results validated against original UK panel with high correlation (r=0.93). Demonstrates cross-cultural consistency of harm rankings across Western nations.',
@@ -355,9 +360,15 @@ export default function DrugHarmChart() {
             >
               <div className="flex items-start gap-6 flex-wrap">
                 <div className="flex-1 min-w-[300px]">
-                  <h3 className="font-mono font-bold text-lg mb-3" style={{ color: studyInfo[selectedStudy].color }}>
+                  <a
+                    href={studyInfo[selectedStudy].link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono font-bold text-lg mb-3 block hover:underline"
+                    style={{ color: studyInfo[selectedStudy].color }}
+                  >
                     {studyInfo[selectedStudy].fullName}
-                  </h3>
+                  </a>
                   <p className="text-slate-400 text-sm leading-relaxed">{studyInfo[selectedStudy].description}</p>
                 </div>
                 <div className="px-5 py-3 bg-slate-900/40 rounded-lg">
@@ -565,9 +576,15 @@ export default function DrugHarmChart() {
                   className="bg-slate-800/40 rounded-xl p-4"
                   style={{ borderLeft: `4px solid ${info.color}` }}
                 >
-                  <h4 className="font-mono font-bold text-sm mb-2" style={{ color: info.color }}>
+                  <a
+                    href={info.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono font-bold text-sm mb-2 block hover:underline"
+                    style={{ color: info.color }}
+                  >
                     {info.fullName}
-                  </h4>
+                  </a>
                   <p className="text-slate-500 text-xs mb-2">
                     {info.journal}
                   </p>
