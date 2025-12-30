@@ -5,10 +5,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } fro
 import CriteriaToggles from './CriteriaToggles';
 import {
   type CriteriaKey,
-  criteriaMetadata,
-  userCriteria,
-  othersCriteria,
-  drugCriteriaScores,
+  type StudyId,
+  getCriteriaDataForStudy,
   calculateTotalHarm,
 } from '@/data/criteriaData';
 
@@ -35,7 +33,15 @@ const harmData = [
   { drug: 'Psilocybin Mushrooms', nutt2010: 5, australia2019: 4, nz2023: 4, europe2015: 5 },
 ] as const;
 
-type StudyKey = 'nutt2010' | 'australia2019' | 'nz2023' | 'europe2015';
+type ChartStudyKey = 'nutt2010' | 'australia2019' | 'nz2023' | 'europe2015';
+
+// Map chart study keys to StudyId
+const studyKeyToId: Record<ChartStudyKey, StudyId> = {
+  nutt2010: 'uk2010',
+  australia2019: 'australia2019',
+  nz2023: 'newzealand2023',
+  europe2015: 'europe2015',
+};
 
 interface StudyInfo {
   name: string;
@@ -44,10 +50,9 @@ interface StudyInfo {
   link: string;
   color: string;
   description: string;
-  hasCriteriaData: boolean;
 }
 
-const studyInfo: Record<StudyKey, StudyInfo> = {
+const studyInfo: Record<ChartStudyKey, StudyInfo> = {
   nutt2010: {
     name: 'UK 2010',
     fullName: 'Nutt et al. (2010)',
@@ -56,7 +61,6 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     color: '#6366f1',
     description:
       'The foundational gold-standard MCDA study. Used 16 harm criteria with swing weighting. Published in The Lancet (highest impact factor). Most cited drug harm ranking study.',
-    hasCriteriaData: true,
   },
   australia2019: {
     name: 'Australia 2019',
@@ -66,7 +70,6 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     color: '#22c55e',
     description:
       'Rigorous MCDA replication with diverse Australian experts. Added supplementary prevalence-adjusted analysis to account for local usage patterns. High methodological quality.',
-    hasCriteriaData: false,
   },
   nz2023: {
     name: 'New Zealand 2023',
@@ -75,8 +78,7 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     link: 'https://doi.org/10.1177/02698811231182012',
     color: '#f97316',
     description:
-      'Most methodologically advanced study. Added culturally-relevant criteria including indigenous perspectives and youth-specific harm analysis. Most recent data reflects current drug landscape.',
-    hasCriteriaData: false,
+      'Most methodologically advanced study. Added culturally-relevant criteria including indigenous perspectives (non-physical/spiritual harm) and youth-specific harm analysis. Most recent data reflects current drug landscape.',
   },
   europe2015: {
     name: 'Europe 2015',
@@ -86,7 +88,6 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     color: '#ec4899',
     description:
       'EU-wide expert panel providing international perspective. Results validated against original UK panel with high correlation (r=0.93). Demonstrates cross-cultural consistency of harm rankings across Western nations.',
-    hasCriteriaData: false,
   },
 };
 
@@ -100,9 +101,12 @@ interface StackedTooltipProps {
     name: string;
   }>;
   label?: string;
+  studyId: StudyId;
 }
 
-function StackedTooltip({ active, payload, label }: StackedTooltipProps) {
+function StackedTooltip({ active, payload, label, studyId }: StackedTooltipProps) {
+  const { metadata: criteriaMetadata } = getCriteriaDataForStudy(studyId);
+
   if (active && payload && payload.length) {
     const total = payload.reduce((sum, entry) => sum + entry.value, 0);
 
@@ -154,7 +158,7 @@ function CustomTooltip({ active, payload, label }: TooltipProps) {
         <p className="font-mono font-bold text-sm text-slate-50 mb-2">{label}</p>
         {payload.map((entry, index) => (
           <p key={index} className="font-mono text-xs text-slate-400 my-1">
-            {studyInfo[entry.dataKey as StudyKey]?.name}:{' '}
+            {studyInfo[entry.dataKey as ChartStudyKey]?.name}:{' '}
             <span className="text-slate-50 font-semibold">{entry.value}</span>
           </p>
         ))}
@@ -181,13 +185,31 @@ function ComparisonTooltip({ active, payload, label }: TooltipProps) {
 }
 
 export default function DrugHarmChart() {
-  const [selectedStudy, setSelectedStudy] = useState<StudyKey>('nutt2010');
+  const [selectedStudy, setSelectedStudy] = useState<ChartStudyKey>('nutt2010');
   const [activeTab, setActiveTab] = useState<'single' | 'comparison'>('single');
 
-  // Initialize with all criteria enabled
+  // Get study-specific criteria data
+  const studyId = studyKeyToId[selectedStudy];
+  const {
+    userMetadata: userCriteriaMetadata,
+    othersMetadata: othersCriteriaMetadata,
+    metadata: criteriaMetadata,
+    scores: criteriaScores,
+    hasCriteriaBreakdown,
+  } = getCriteriaDataForStudy(studyId);
+
+  // Initialize with all criteria enabled for the current study
   const [enabledCriteria, setEnabledCriteria] = useState<Set<CriteriaKey>>(
     () => new Set(criteriaMetadata.map((c) => c.key))
   );
+
+  // Reset enabled criteria when study changes
+  const handleStudyChange = (newStudy: ChartStudyKey) => {
+    setSelectedStudy(newStudy);
+    const newStudyId = studyKeyToId[newStudy];
+    const { metadata } = getCriteriaDataForStudy(newStudyId);
+    setEnabledCriteria(new Set(metadata.map((c) => c.key)));
+  };
 
   // Handlers for criteria toggles
   const handleToggleCriterion = (key: CriteriaKey) => {
@@ -202,41 +224,64 @@ export default function DrugHarmChart() {
     });
   };
 
-  const handleSelectAll = (category: 'user' | 'others' | 'all') => {
+  const handleSelectAll = () => {
+    setEnabledCriteria(new Set(criteriaMetadata.map((c) => c.key)));
+  };
+
+  const handleClearAll = () => {
+    setEnabledCriteria(new Set());
+  };
+
+  const handleSelectAllUser = () => {
     setEnabledCriteria((prev) => {
       const next = new Set(prev);
-      const criteria = category === 'all' ? criteriaMetadata : category === 'user' ? userCriteria : othersCriteria;
-      criteria.forEach((c) => next.add(c.key));
+      userCriteriaMetadata.forEach((c) => next.add(c.key));
       return next;
     });
   };
 
-  const handleClearAll = (category: 'user' | 'others' | 'all') => {
+  const handleClearAllUser = () => {
     setEnabledCriteria((prev) => {
       const next = new Set(prev);
-      const criteria = category === 'all' ? criteriaMetadata : category === 'user' ? userCriteria : othersCriteria;
-      criteria.forEach((c) => next.delete(c.key));
+      userCriteriaMetadata.forEach((c) => next.delete(c.key));
       return next;
     });
   };
 
-  // Prepare data for stacked chart (UK 2010 with criteria breakdown)
+  const handleSelectAllOthers = () => {
+    setEnabledCriteria((prev) => {
+      const next = new Set(prev);
+      othersCriteriaMetadata.forEach((c) => next.add(c.key));
+      return next;
+    });
+  };
+
+  const handleClearAllOthers = () => {
+    setEnabledCriteria((prev) => {
+      const next = new Set(prev);
+      othersCriteriaMetadata.forEach((c) => next.delete(c.key));
+      return next;
+    });
+  };
+
+  // Prepare data for stacked chart
   const stackedData = useMemo(() => {
-    return drugCriteriaScores
+    return criteriaScores
       .map((drug) => ({
         ...drug,
-        total: calculateTotalHarm(drug, enabledCriteria),
+        total: calculateTotalHarm(drug, enabledCriteria, studyId),
       }))
       .sort((a, b) => b.total - a.total);
-  }, [enabledCriteria]);
+  }, [criteriaScores, enabledCriteria, studyId]);
 
   // Get enabled criteria metadata for rendering bars
   const enabledCriteriaList = useMemo(() => {
     return criteriaMetadata.filter((c) => enabledCriteria.has(c.key));
-  }, [enabledCriteria]);
+  }, [criteriaMetadata, enabledCriteria]);
 
   // Calculate max domain based on enabled criteria
   const maxStackedValue = useMemo(() => {
+    if (stackedData.length === 0) return 50;
     const max = Math.max(...stackedData.map((d) => d.total));
     return Math.ceil(max / 10) * 10 + 5;
   }, [stackedData]);
@@ -253,8 +298,6 @@ export default function DrugHarmChart() {
     if (!d) return '0.0';
     return ((d.nutt2010 + d.australia2019 + d.nz2023 + d.europe2015) / 4).toFixed(1);
   };
-
-  const showStackedChart = selectedStudy === 'nutt2010';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-8 font-sans">
@@ -299,23 +342,24 @@ export default function DrugHarmChart() {
           <>
             {/* Study Selection */}
             <div className="flex gap-3 mb-6 flex-wrap">
-              {(Object.entries(studyInfo) as [StudyKey, StudyInfo][]).map(([key, info]) => (
-                <button
-                  key={key}
-                  onClick={() => setSelectedStudy(key)}
-                  className="px-5 py-2.5 rounded-lg font-mono text-xs font-medium transition-all"
-                  style={{
-                    border: selectedStudy === key ? `2px solid ${info.color}` : '2px solid transparent',
-                    background: selectedStudy === key ? `${info.color}20` : 'rgba(30, 41, 59, 0.6)',
-                    color: selectedStudy === key ? info.color : '#94a3b8',
-                  }}
-                >
-                  {info.name}
-                  {info.hasCriteriaData && (
-                    <span className="ml-1.5 text-[10px] opacity-70">*</span>
-                  )}
-                </button>
-              ))}
+              {(Object.entries(studyInfo) as [ChartStudyKey, StudyInfo][]).map(([key, info]) => {
+                const { hasCriteriaBreakdown: hasBreakdown } = getCriteriaDataForStudy(studyKeyToId[key]);
+                return (
+                  <button
+                    key={key}
+                    onClick={() => handleStudyChange(key)}
+                    className="px-5 py-2.5 rounded-lg font-mono text-xs font-medium transition-all"
+                    style={{
+                      border: selectedStudy === key ? `2px solid ${info.color}` : '2px solid transparent',
+                      background: selectedStudy === key ? `${info.color}20` : 'rgba(30, 41, 59, 0.6)',
+                      color: selectedStudy === key ? info.color : '#94a3b8',
+                    }}
+                  >
+                    {info.name}
+                    {hasBreakdown && <span className="ml-1.5 text-[10px] opacity-70">✦</span>}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Study Info Card */}
@@ -345,31 +389,37 @@ export default function DrugHarmChart() {
               </div>
             </div>
 
-            {/* Criteria Toggles */}
-            {showStackedChart && (
+            {/* Criteria Toggles - only show if study has criteria breakdown */}
+            {hasCriteriaBreakdown && criteriaMetadata.length > 0 && (
               <CriteriaToggles
+                userCriteriaMetadata={userCriteriaMetadata}
+                othersCriteriaMetadata={othersCriteriaMetadata}
                 enabledCriteria={enabledCriteria}
                 onToggle={handleToggleCriterion}
                 onSelectAll={handleSelectAll}
                 onClearAll={handleClearAll}
+                onSelectAllUser={handleSelectAllUser}
+                onClearAllUser={handleClearAllUser}
+                onSelectAllOthers={handleSelectAllOthers}
+                onClearAllOthers={handleClearAllOthers}
               />
             )}
 
             {/* Main Chart */}
             <div className="bg-slate-900/60 rounded-2xl p-6 border border-slate-700/10 mb-6">
-              {showStackedChart ? (
-                // Stacked criteria chart for UK 2010
+              {hasCriteriaBreakdown && criteriaScores.length > 0 ? (
+                // Stacked criteria chart
                 <>
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-mono text-sm font-semibold text-slate-300">
-                      Harm by Criteria (UK 2010)
+                      Harm by Criteria ({studyInfo[selectedStudy].name})
                     </h3>
                     <span className="text-xs font-mono text-slate-500">
                       {enabledCriteriaList.length} criteria selected
                     </span>
                   </div>
-                  <ResponsiveContainer width="100%" height={650}>
-                    <BarChart data={stackedData} layout="vertical" margin={{ top: 0, right: 30, left: 140, bottom: 0 }}>
+                  <ResponsiveContainer width="100%" height={Math.max(450, stackedData.length * 32)}>
+                    <BarChart data={stackedData} layout="vertical" margin={{ top: 0, right: 30, left: 160, bottom: 0 }}>
                       <XAxis
                         type="number"
                         domain={[0, maxStackedValue]}
@@ -380,12 +430,12 @@ export default function DrugHarmChart() {
                       <YAxis
                         type="category"
                         dataKey="drug"
-                        tick={{ fill: '#e2e8f0', fontSize: 12, fontFamily: 'var(--font-geist-mono)' }}
+                        tick={{ fill: '#e2e8f0', fontSize: 11, fontFamily: 'var(--font-geist-mono)' }}
                         axisLine={{ stroke: '#334155' }}
                         tickLine={false}
-                        width={130}
+                        width={150}
                       />
-                      <Tooltip content={<StackedTooltip />} />
+                      <Tooltip content={<StackedTooltip studyId={studyId} />} />
                       {enabledCriteriaList.map((criterion) => (
                         <Bar
                           key={criterion.key}
@@ -411,43 +461,51 @@ export default function DrugHarmChart() {
                   </div>
                 </>
               ) : (
-                // Original single-color chart for other studies
-                <ResponsiveContainer width="100%" height={600}>
-                  <BarChart data={sortedData} layout="vertical" margin={{ top: 0, right: 30, left: 140, bottom: 0 }}>
-                    <XAxis
-                      type="number"
-                      domain={[0, 45]}
-                      tick={{ fill: '#64748b', fontSize: 11, fontFamily: 'var(--font-geist-mono)' }}
-                      axisLine={{ stroke: '#334155' }}
-                      tickLine={{ stroke: '#334155' }}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="drug"
-                      tick={{ fill: '#e2e8f0', fontSize: 12, fontFamily: 'var(--font-geist-mono)' }}
-                      axisLine={{ stroke: '#334155' }}
-                      tickLine={false}
-                      width={130}
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar
-                      dataKey={selectedStudy}
-                      radius={[0, 4, 4, 0]}
-                      maxBarSize={20}
-                      fill={studyInfo[selectedStudy].color}
-                      fillOpacity={0.85}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+                // Original single-color chart for studies without criteria breakdown
+                <>
+                  {selectedStudy === 'europe2015' && (
+                    <div className="mb-4 px-4 py-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                      <p className="text-amber-300 text-xs leading-relaxed">
+                        <strong>Note:</strong> The Europe 2015 study does not provide individual criterion scores in the
+                        published paper. Only aggregate harm-to-users vs harm-to-others totals are available.
+                      </p>
+                    </div>
+                  )}
+                  <ResponsiveContainer width="100%" height={600}>
+                    <BarChart data={sortedData} layout="vertical" margin={{ top: 0, right: 30, left: 140, bottom: 0 }}>
+                      <XAxis
+                        type="number"
+                        domain={[0, 45]}
+                        tick={{ fill: '#64748b', fontSize: 11, fontFamily: 'var(--font-geist-mono)' }}
+                        axisLine={{ stroke: '#334155' }}
+                        tickLine={{ stroke: '#334155' }}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="drug"
+                        tick={{ fill: '#e2e8f0', fontSize: 12, fontFamily: 'var(--font-geist-mono)' }}
+                        axisLine={{ stroke: '#334155' }}
+                        tickLine={false}
+                        width={130}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Bar
+                        dataKey={selectedStudy}
+                        radius={[0, 4, 4, 0]}
+                        maxBarSize={20}
+                        fill={studyInfo[selectedStudy].color}
+                        fillOpacity={0.85}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </>
               )}
             </div>
 
             {/* Note about criteria data availability */}
-            {!studyInfo[selectedStudy].hasCriteriaData && (
-              <p className="text-xs text-slate-500 font-mono mb-6">
-                * Detailed criteria breakdown is only available for UK 2010 study
-              </p>
-            )}
+            <p className="text-xs text-slate-500 font-mono mb-6">
+              ✦ Studies with detailed criteria breakdown available
+            </p>
           </>
         )}
 
@@ -483,7 +541,7 @@ export default function DrugHarmChart() {
                   <Legend
                     wrapperStyle={{ paddingTop: '20px' }}
                     formatter={(value) => (
-                      <span className="text-slate-400 text-xs font-mono">{studyInfo[value as StudyKey]?.name}</span>
+                      <span className="text-slate-400 text-xs font-mono">{studyInfo[value as ChartStudyKey]?.name}</span>
                     )}
                   />
                   <Bar
@@ -520,7 +578,7 @@ export default function DrugHarmChart() {
 
             {/* Study Legend Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              {(Object.entries(studyInfo) as [StudyKey, StudyInfo][]).map(([key, info]) => (
+              {(Object.entries(studyInfo) as [ChartStudyKey, StudyInfo][]).map(([key, info]) => (
                 <div
                   key={key}
                   className="bg-slate-800/40 rounded-xl p-4"
@@ -535,9 +593,7 @@ export default function DrugHarmChart() {
                   >
                     {info.fullName}
                   </a>
-                  <p className="text-slate-500 text-xs mb-2">
-                    {info.journal}
-                  </p>
+                  <p className="text-slate-500 text-xs mb-2">{info.journal}</p>
                   <p className="text-slate-400 text-xs leading-relaxed">{info.description}</p>
                 </div>
               ))}
@@ -592,9 +648,7 @@ export default function DrugHarmChart() {
                       const range = Math.max(...values) - Math.min(...values);
                       return (
                         <tr key={row.drug} className={i % 2 === 0 ? '' : 'bg-slate-800/30'}>
-                          <td className="p-2.5 text-slate-200 text-sm font-mono">
-                            {row.drug}
-                          </td>
+                          <td className="p-2.5 text-slate-200 text-sm font-mono">{row.drug}</td>
                           <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">
                             {row.nutt2010}
                           </td>
@@ -628,11 +682,10 @@ export default function DrugHarmChart() {
         {/* Methodology Note */}
         <div className="mt-6 px-5 py-4 bg-indigo-500/10 rounded-lg border border-indigo-500/20">
           <p className="text-indigo-300 text-xs leading-relaxed">
-            <strong>Methodology:</strong> Scores use Multi-Criteria Decision Analysis with swing weighting. The 16
-            criteria are divided into harm to users (9 criteria: mortality, physical damage, dependence, mental
-            impairment, loss of tangibles/relationships) and harm to others (7 criteria: injury, crime, environmental
-            damage, family adversities, international damage, economic cost, community impact). Scale: 0 (no harm) to
-            100 (maximum possible harm).
+            <strong>Methodology:</strong> Scores use Multi-Criteria Decision Analysis with swing weighting. Harm to
+            users criteria include: mortality (drug-specific and drug-related), physical damage (direct and related),
+            dependence, mental impairment, loss of tangibles, and loss of relationships. New Zealand 2023 also includes
+            non-physical/spiritual harm criteria. Scale: 0 (no harm) to 100 (maximum possible harm).
           </p>
         </div>
 
@@ -640,7 +693,7 @@ export default function DrugHarmChart() {
         <div className="mt-4 text-slate-500 text-xs leading-relaxed">
           <p>
             <strong>Sources:</strong> Nutt DJ et al. (2010) The Lancet 376:1558-65; Bonomo Y et al. (2019) J
-            Psychopharmacol 33(7):759-768; Crossin R et al. (2023) J Psychopharmacol 37(8):801-815; van Amsterdam J et
+            Psychopharmacol 33(7):759-768; Crossin R et al. (2023) J Psychopharmacol 37(9):891-903; van Amsterdam J et
             al. (2015) J Psychopharmacol 29(6):655-60
           </p>
         </div>
