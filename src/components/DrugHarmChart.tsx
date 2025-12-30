@@ -1,7 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
+import CriteriaToggles from './CriteriaToggles';
+import {
+  type CriteriaKey,
+  criteriaMetadata,
+  userCriteria,
+  othersCriteria,
+  drugCriteriaScores,
+  calculateTotalHarm,
+} from '@/data/criteriaData';
 
 // Data extracted from key MCDA studies - Harm to Users scores (normalized to 0-100 scale)
 const harmData = [
@@ -26,7 +35,7 @@ const harmData = [
   { drug: 'Psilocybin Mushrooms', nutt2010: 5, australia2019: 4, nz2023: 4, europe2015: 5, category: 'psychedelic' },
 ] as const;
 
-type Category = typeof harmData[number]['category'];
+type Category = (typeof harmData)[number]['category'];
 type StudyKey = 'nutt2010' | 'australia2019' | 'nz2023' | 'europe2015';
 
 const categoryColors: Record<Category, string> = {
@@ -36,7 +45,7 @@ const categoryColors: Record<Category, string> = {
   cannabinoid: '#22c55e',
   dissociative: '#06b6d4',
   psychedelic: '#ec4899',
-  other: '#6b7280'
+  other: '#6b7280',
 };
 
 const categoryLabels: Record<Category, string> = {
@@ -46,7 +55,7 @@ const categoryLabels: Record<Category, string> = {
   cannabinoid: 'Cannabinoids',
   dissociative: 'Dissociatives',
   psychedelic: 'Psychedelics',
-  other: 'Other'
+  other: 'Other',
 };
 
 interface StudyInfo {
@@ -57,6 +66,7 @@ interface StudyInfo {
   trust: number;
   color: string;
   description: string;
+  hasCriteriaData: boolean;
 }
 
 const studyInfo: Record<StudyKey, StudyInfo> = {
@@ -67,7 +77,9 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     experts: 15,
     trust: 10,
     color: '#6366f1',
-    description: 'The foundational gold-standard MCDA study. Used 16 harm criteria with swing weighting. Published in The Lancet (highest impact factor). Most cited drug harm ranking study. Limitation: relatively small expert panel of ~15 specialists.'
+    description:
+      'The foundational gold-standard MCDA study. Used 16 harm criteria with swing weighting. Published in The Lancet (highest impact factor). Most cited drug harm ranking study. Limitation: relatively small expert panel of ~15 specialists.',
+    hasCriteriaData: true,
   },
   australia2019: {
     name: 'Australia 2019',
@@ -76,7 +88,9 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     experts: 25,
     trust: 9,
     color: '#22c55e',
-    description: 'Rigorous MCDA replication with 25 diverse Australian experts. Added supplementary prevalence-adjusted analysis to account for local usage patterns. Conducted via intensive single-day workshop. High methodological quality.'
+    description:
+      'Rigorous MCDA replication with 25 diverse Australian experts. Added supplementary prevalence-adjusted analysis to account for local usage patterns. Conducted via intensive single-day workshop. High methodological quality.',
+    hasCriteriaData: false,
   },
   nz2023: {
     name: 'New Zealand 2023',
@@ -85,7 +99,9 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     experts: 23,
     trust: 9,
     color: '#f97316',
-    description: 'Most methodologically advanced study. Added culturally-relevant criteria including indigenous perspectives and youth-specific harm analysis. 23 diverse experts across disciplines. Most recent data reflects current drug landscape.'
+    description:
+      'Most methodologically advanced study. Added culturally-relevant criteria including indigenous perspectives and youth-specific harm analysis. 23 diverse experts across disciplines. Most recent data reflects current drug landscape.',
+    hasCriteriaData: false,
   },
   europe2015: {
     name: 'Europe 2015',
@@ -94,14 +110,70 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     experts: 20,
     trust: 7,
     color: '#ec4899',
-    description: 'EU-wide expert panel providing international perspective. Results validated against original UK panel with high correlation (r=0.93). Demonstrates cross-cultural consistency of harm rankings across Western nations.'
-  }
+    description:
+      'EU-wide expert panel providing international perspective. Results validated against original UK panel with high correlation (r=0.93). Demonstrates cross-cultural consistency of harm rankings across Western nations.',
+    hasCriteriaData: false,
+  },
 };
+
+// Stacked chart tooltip
+interface StackedTooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    dataKey: string;
+    value: number;
+    color: string;
+    name: string;
+  }>;
+  label?: string;
+}
+
+function StackedTooltip({ active, payload, label }: StackedTooltipProps) {
+  if (active && payload && payload.length) {
+    const total = payload.reduce((sum, entry) => sum + entry.value, 0);
+    const drugData = drugCriteriaScores.find((d) => d.drug === label);
+
+    return (
+      <div className="bg-slate-900/95 border border-slate-600/30 rounded-lg p-3 shadow-xl max-w-xs">
+        <p className="font-mono font-bold text-sm text-slate-50 mb-1">{label}</p>
+        {drugData && (
+          <p
+            className="font-mono text-xs mb-2 uppercase tracking-wide"
+            style={{ color: categoryColors[drugData.category] }}
+          >
+            {categoryLabels[drugData.category]}
+          </p>
+        )}
+        <p className="font-mono text-xs text-slate-300 mb-2 border-b border-slate-700 pb-2">
+          Total: <span className="font-bold">{total}</span>
+        </p>
+        <div className="space-y-0.5 max-h-48 overflow-y-auto">
+          {payload
+            .filter((entry) => entry.value > 0)
+            .sort((a, b) => b.value - a.value)
+            .map((entry, index) => {
+              const criterion = criteriaMetadata.find((c) => c.key === entry.dataKey);
+              return (
+                <p key={index} className="font-mono text-[11px] text-slate-400 flex justify-between gap-2">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: entry.color }} />
+                    {criterion?.shortLabel || entry.dataKey}
+                  </span>
+                  <span className="text-slate-200 font-medium">{entry.value}</span>
+                </p>
+              );
+            })}
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
 
 interface TooltipProps {
   active?: boolean;
   payload?: Array<{
-    payload: typeof harmData[number];
+    payload: (typeof harmData)[number];
     dataKey: string;
     value: number;
     color: string;
@@ -116,15 +188,13 @@ function CustomTooltip({ active, payload, label }: TooltipProps) {
     return (
       <div className="bg-slate-900/95 border border-slate-600/30 rounded-lg p-3 shadow-xl">
         <p className="font-mono font-bold text-sm text-slate-50 mb-2">{label}</p>
-        <p
-          className="font-mono text-xs mb-2 uppercase tracking-wide"
-          style={{ color: categoryColors[data.category] }}
-        >
+        <p className="font-mono text-xs mb-2 uppercase tracking-wide" style={{ color: categoryColors[data.category] }}>
           {categoryLabels[data.category]}
         </p>
         {payload.map((entry, index) => (
           <p key={index} className="font-mono text-xs text-slate-400 my-1">
-            {studyInfo[entry.dataKey as StudyKey]?.name}: <span className="text-slate-50 font-semibold">{entry.value}</span>
+            {studyInfo[entry.dataKey as StudyKey]?.name}:{' '}
+            <span className="text-slate-50 font-semibold">{entry.value}</span>
           </p>
         ))}
       </div>
@@ -152,6 +222,64 @@ function ComparisonTooltip({ active, payload, label }: TooltipProps) {
 export default function DrugHarmChart() {
   const [selectedStudy, setSelectedStudy] = useState<StudyKey>('nutt2010');
   const [activeTab, setActiveTab] = useState<'single' | 'comparison'>('single');
+  const [showCriteriaBreakdown, setShowCriteriaBreakdown] = useState(true);
+
+  // Initialize with all criteria enabled
+  const [enabledCriteria, setEnabledCriteria] = useState<Set<CriteriaKey>>(
+    () => new Set(criteriaMetadata.map((c) => c.key))
+  );
+
+  // Handlers for criteria toggles
+  const handleToggleCriterion = (key: CriteriaKey) => {
+    setEnabledCriteria((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = (category: 'user' | 'others' | 'all') => {
+    setEnabledCriteria((prev) => {
+      const next = new Set(prev);
+      const criteria = category === 'all' ? criteriaMetadata : category === 'user' ? userCriteria : othersCriteria;
+      criteria.forEach((c) => next.add(c.key));
+      return next;
+    });
+  };
+
+  const handleClearAll = (category: 'user' | 'others' | 'all') => {
+    setEnabledCriteria((prev) => {
+      const next = new Set(prev);
+      const criteria = category === 'all' ? criteriaMetadata : category === 'user' ? userCriteria : othersCriteria;
+      criteria.forEach((c) => next.delete(c.key));
+      return next;
+    });
+  };
+
+  // Prepare data for stacked chart (UK 2010 with criteria breakdown)
+  const stackedData = useMemo(() => {
+    return drugCriteriaScores
+      .map((drug) => ({
+        ...drug,
+        total: calculateTotalHarm(drug, enabledCriteria),
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [enabledCriteria]);
+
+  // Get enabled criteria metadata for rendering bars
+  const enabledCriteriaList = useMemo(() => {
+    return criteriaMetadata.filter((c) => enabledCriteria.has(c.key));
+  }, [enabledCriteria]);
+
+  // Calculate max domain based on enabled criteria
+  const maxStackedValue = useMemo(() => {
+    const max = Math.max(...stackedData.map((d) => d.total));
+    return Math.ceil(max / 10) * 10 + 5;
+  }, [stackedData]);
 
   const sortedData = [...harmData].sort((a, b) => b[selectedStudy] - a[selectedStudy]);
   const comparisonSortedData = [...harmData].sort((a, b) => {
@@ -161,10 +289,12 @@ export default function DrugHarmChart() {
   });
 
   const averageHarm = (drug: string) => {
-    const d = harmData.find(h => h.drug === drug);
+    const d = harmData.find((h) => h.drug === drug);
     if (!d) return '0.0';
     return ((d.nutt2010 + d.australia2019 + d.nz2023 + d.europe2015) / 4).toFixed(1);
   };
+
+  const showStackedChart = selectedStudy === 'nutt2010' && showCriteriaBreakdown;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-8 font-sans">
@@ -172,12 +302,12 @@ export default function DrugHarmChart() {
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <h1 className="font-mono text-2xl md:text-3xl font-bold text-slate-50 mb-2 tracking-tight">
-            Drug Harm Rankings: Harm to Users
+            Drug Harm Rankings
           </h1>
           <p className="text-sm text-slate-400 max-w-2xl leading-relaxed">
-            Multi-Criteria Decision Analysis (MCDA) scores from peer-reviewed expert panel studies.
-            Scores represent weighted harm assessments across criteria including mortality, dependence,
-            physical damage, and mental impairment.
+            Multi-Criteria Decision Analysis (MCDA) scores from peer-reviewed expert panel studies. Scores represent
+            weighted harm assessments across criteria including mortality, dependence, physical damage, and mental
+            impairment.
           </p>
         </div>
 
@@ -217,10 +347,13 @@ export default function DrugHarmChart() {
                   style={{
                     border: selectedStudy === key ? `2px solid ${info.color}` : '2px solid transparent',
                     background: selectedStudy === key ? `${info.color}20` : 'rgba(30, 41, 59, 0.6)',
-                    color: selectedStudy === key ? info.color : '#94a3b8'
+                    color: selectedStudy === key ? info.color : '#94a3b8',
                   }}
                 >
                   {info.name}
+                  {info.hasCriteriaData && (
+                    <span className="ml-1.5 text-[10px] opacity-70">*</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -233,19 +366,14 @@ export default function DrugHarmChart() {
               <div className="flex items-start gap-6 flex-wrap">
                 <div className="flex-1 min-w-[300px]">
                   <div className="flex items-center gap-3 mb-3">
-                    <h3
-                      className="font-mono font-bold text-lg"
-                      style={{ color: studyInfo[selectedStudy].color }}
-                    >
+                    <h3 className="font-mono font-bold text-lg" style={{ color: studyInfo[selectedStudy].color }}>
                       {studyInfo[selectedStudy].fullName}
                     </h3>
                     <span className="bg-green-500/20 text-green-500 px-2.5 py-1 rounded-full text-xs font-semibold font-mono">
                       Trust: {studyInfo[selectedStudy].trust}/10
                     </span>
                   </div>
-                  <p className="text-slate-400 text-sm leading-relaxed">
-                    {studyInfo[selectedStudy].description}
-                  </p>
+                  <p className="text-slate-400 text-sm leading-relaxed">{studyInfo[selectedStudy].description}</p>
                 </div>
                 <div className="flex gap-6 px-5 py-3 bg-slate-900/40 rounded-lg">
                   <div>
@@ -264,42 +392,124 @@ export default function DrugHarmChart() {
               </div>
             </div>
 
+            {/* Criteria Breakdown Toggle (only for UK 2010) */}
+            {studyInfo[selectedStudy].hasCriteriaData && (
+              <div className="mb-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showCriteriaBreakdown}
+                    onChange={(e) => setShowCriteriaBreakdown(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900"
+                  />
+                  <span className="text-sm font-mono text-slate-300">
+                    Show criteria breakdown
+                  </span>
+                </label>
+              </div>
+            )}
+
+            {/* Criteria Toggles */}
+            {showStackedChart && (
+              <CriteriaToggles
+                enabledCriteria={enabledCriteria}
+                onToggle={handleToggleCriterion}
+                onSelectAll={handleSelectAll}
+                onClearAll={handleClearAll}
+              />
+            )}
+
             {/* Main Chart */}
             <div className="bg-slate-900/60 rounded-2xl p-6 border border-slate-700/10 mb-6">
-              <ResponsiveContainer width="100%" height={600}>
-                <BarChart
-                  data={sortedData}
-                  layout="vertical"
-                  margin={{ top: 0, right: 30, left: 120, bottom: 0 }}
-                >
-                  <XAxis
-                    type="number"
-                    domain={[0, 45]}
-                    tick={{ fill: '#64748b', fontSize: 11, fontFamily: 'var(--font-geist-mono)' }}
-                    axisLine={{ stroke: '#334155' }}
-                    tickLine={{ stroke: '#334155' }}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="drug"
-                    tick={{ fill: '#e2e8f0', fontSize: 12, fontFamily: 'var(--font-geist-mono)' }}
-                    axisLine={{ stroke: '#334155' }}
-                    tickLine={false}
-                    width={110}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar
-                    dataKey={selectedStudy}
-                    radius={[0, 4, 4, 0]}
-                    maxBarSize={20}
-                  >
-                    {sortedData.map((entry, index) => (
-                      <Cell key={index} fill={categoryColors[entry.category]} fillOpacity={0.85} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              {showStackedChart ? (
+                // Stacked criteria chart for UK 2010
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-mono text-sm font-semibold text-slate-300">
+                      Harm by Criteria (UK 2010)
+                    </h3>
+                    <span className="text-xs font-mono text-slate-500">
+                      {enabledCriteriaList.length} criteria selected
+                    </span>
+                  </div>
+                  <ResponsiveContainer width="100%" height={650}>
+                    <BarChart data={stackedData} layout="vertical" margin={{ top: 0, right: 30, left: 140, bottom: 0 }}>
+                      <XAxis
+                        type="number"
+                        domain={[0, maxStackedValue]}
+                        tick={{ fill: '#64748b', fontSize: 11, fontFamily: 'var(--font-geist-mono)' }}
+                        axisLine={{ stroke: '#334155' }}
+                        tickLine={{ stroke: '#334155' }}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="drug"
+                        tick={{ fill: '#e2e8f0', fontSize: 12, fontFamily: 'var(--font-geist-mono)' }}
+                        axisLine={{ stroke: '#334155' }}
+                        tickLine={false}
+                        width={130}
+                      />
+                      <Tooltip content={<StackedTooltip />} />
+                      {enabledCriteriaList.map((criterion) => (
+                        <Bar
+                          key={criterion.key}
+                          dataKey={criterion.key}
+                          stackId="criteria"
+                          fill={criterion.color}
+                          name={criterion.shortLabel}
+                        />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+
+                  {/* Criteria Legend */}
+                  <div className="mt-4 pt-4 border-t border-slate-700/50">
+                    <div className="flex flex-wrap gap-3 justify-center">
+                      {enabledCriteriaList.map((criterion) => (
+                        <div key={criterion.key} className="flex items-center gap-1.5">
+                          <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: criterion.color }} />
+                          <span className="text-xs font-mono text-slate-400">{criterion.shortLabel}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                // Original single-color chart for other studies
+                <ResponsiveContainer width="100%" height={600}>
+                  <BarChart data={sortedData} layout="vertical" margin={{ top: 0, right: 30, left: 140, bottom: 0 }}>
+                    <XAxis
+                      type="number"
+                      domain={[0, 45]}
+                      tick={{ fill: '#64748b', fontSize: 11, fontFamily: 'var(--font-geist-mono)' }}
+                      axisLine={{ stroke: '#334155' }}
+                      tickLine={{ stroke: '#334155' }}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="drug"
+                      tick={{ fill: '#e2e8f0', fontSize: 12, fontFamily: 'var(--font-geist-mono)' }}
+                      axisLine={{ stroke: '#334155' }}
+                      tickLine={false}
+                      width={130}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey={selectedStudy} radius={[0, 4, 4, 0]} maxBarSize={20}>
+                      {sortedData.map((entry, index) => (
+                        <Cell key={index} fill={categoryColors[entry.category]} fillOpacity={0.85} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
+
+            {/* Note about criteria data availability */}
+            {!studyInfo[selectedStudy].hasCriteriaData && (
+              <p className="text-xs text-slate-500 font-mono mb-6">
+                * Detailed criteria breakdown is only available for UK 2010 study
+              </p>
+            )}
           </>
         )}
 
@@ -307,15 +517,13 @@ export default function DrugHarmChart() {
           <>
             {/* Cross-Study Comparison Chart */}
             <div className="bg-slate-900/60 rounded-2xl p-6 border border-slate-700/10 mb-6">
-              <h3 className="font-mono text-base font-semibold text-slate-50 mb-5">
-                Harm Scores Across All Studies
-              </h3>
+              <h3 className="font-mono text-base font-semibold text-slate-50 mb-5">Harm Scores Across All Studies</h3>
 
               <ResponsiveContainer width="100%" height={650}>
                 <BarChart
                   data={comparisonSortedData}
                   layout="vertical"
-                  margin={{ top: 0, right: 30, left: 120, bottom: 0 }}
+                  margin={{ top: 0, right: 30, left: 140, bottom: 0 }}
                   barCategoryGap="20%"
                 >
                   <XAxis
@@ -331,21 +539,43 @@ export default function DrugHarmChart() {
                     tick={{ fill: '#e2e8f0', fontSize: 11, fontFamily: 'var(--font-geist-mono)' }}
                     axisLine={{ stroke: '#334155' }}
                     tickLine={false}
-                    width={110}
+                    width={130}
                   />
                   <Tooltip content={<ComparisonTooltip />} />
                   <Legend
                     wrapperStyle={{ paddingTop: '20px' }}
                     formatter={(value) => (
-                      <span className="text-slate-400 text-xs font-mono">
-                        {studyInfo[value as StudyKey]?.name}
-                      </span>
+                      <span className="text-slate-400 text-xs font-mono">{studyInfo[value as StudyKey]?.name}</span>
                     )}
                   />
-                  <Bar dataKey="nutt2010" name="nutt2010" fill={studyInfo.nutt2010.color} radius={[0, 2, 2, 0]} maxBarSize={8} />
-                  <Bar dataKey="australia2019" name="australia2019" fill={studyInfo.australia2019.color} radius={[0, 2, 2, 0]} maxBarSize={8} />
-                  <Bar dataKey="nz2023" name="nz2023" fill={studyInfo.nz2023.color} radius={[0, 2, 2, 0]} maxBarSize={8} />
-                  <Bar dataKey="europe2015" name="europe2015" fill={studyInfo.europe2015.color} radius={[0, 2, 2, 0]} maxBarSize={8} />
+                  <Bar
+                    dataKey="nutt2010"
+                    name="nutt2010"
+                    fill={studyInfo.nutt2010.color}
+                    radius={[0, 2, 2, 0]}
+                    maxBarSize={8}
+                  />
+                  <Bar
+                    dataKey="australia2019"
+                    name="australia2019"
+                    fill={studyInfo.australia2019.color}
+                    radius={[0, 2, 2, 0]}
+                    maxBarSize={8}
+                  />
+                  <Bar
+                    dataKey="nz2023"
+                    name="nz2023"
+                    fill={studyInfo.nz2023.color}
+                    radius={[0, 2, 2, 0]}
+                    maxBarSize={8}
+                  />
+                  <Bar
+                    dataKey="europe2015"
+                    name="europe2015"
+                    fill={studyInfo.europe2015.color}
+                    radius={[0, 2, 2, 0]}
+                    maxBarSize={8}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -369,30 +599,52 @@ export default function DrugHarmChart() {
                   <p className="text-slate-500 text-xs mb-2">
                     {info.journal} • {info.experts} experts
                   </p>
-                  <p className="text-slate-400 text-xs leading-relaxed">
-                    {info.description}
-                  </p>
+                  <p className="text-slate-400 text-xs leading-relaxed">{info.description}</p>
                 </div>
               ))}
             </div>
 
             {/* Summary Table */}
             <div className="bg-slate-900/60 rounded-2xl p-6 border border-slate-700/10">
-              <h3 className="font-mono text-base font-semibold text-slate-50 mb-4">
-                Detailed Score Comparison
-              </h3>
+              <h3 className="font-mono text-base font-semibold text-slate-50 mb-4">Detailed Score Comparison</h3>
 
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
-                      <th className="text-left p-3 text-slate-500 text-xs font-mono uppercase border-b border-slate-700">Drug</th>
-                      <th className="text-center p-3 text-xs font-mono uppercase border-b border-slate-700" style={{ color: studyInfo.nutt2010.color }}>UK 2010</th>
-                      <th className="text-center p-3 text-xs font-mono uppercase border-b border-slate-700" style={{ color: studyInfo.australia2019.color }}>AUS 2019</th>
-                      <th className="text-center p-3 text-xs font-mono uppercase border-b border-slate-700" style={{ color: studyInfo.nz2023.color }}>NZ 2023</th>
-                      <th className="text-center p-3 text-xs font-mono uppercase border-b border-slate-700" style={{ color: studyInfo.europe2015.color }}>EU 2015</th>
-                      <th className="text-center p-3 text-green-500 text-xs font-mono uppercase border-b border-slate-700">Average</th>
-                      <th className="text-center p-3 text-slate-500 text-xs font-mono uppercase border-b border-slate-700">Range</th>
+                      <th className="text-left p-3 text-slate-500 text-xs font-mono uppercase border-b border-slate-700">
+                        Drug
+                      </th>
+                      <th
+                        className="text-center p-3 text-xs font-mono uppercase border-b border-slate-700"
+                        style={{ color: studyInfo.nutt2010.color }}
+                      >
+                        UK 2010
+                      </th>
+                      <th
+                        className="text-center p-3 text-xs font-mono uppercase border-b border-slate-700"
+                        style={{ color: studyInfo.australia2019.color }}
+                      >
+                        AUS 2019
+                      </th>
+                      <th
+                        className="text-center p-3 text-xs font-mono uppercase border-b border-slate-700"
+                        style={{ color: studyInfo.nz2023.color }}
+                      >
+                        NZ 2023
+                      </th>
+                      <th
+                        className="text-center p-3 text-xs font-mono uppercase border-b border-slate-700"
+                        style={{ color: studyInfo.europe2015.color }}
+                      >
+                        EU 2015
+                      </th>
+                      <th className="text-center p-3 text-green-500 text-xs font-mono uppercase border-b border-slate-700">
+                        Average
+                      </th>
+                      <th className="text-center p-3 text-slate-500 text-xs font-mono uppercase border-b border-slate-700">
+                        Range
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -403,19 +655,28 @@ export default function DrugHarmChart() {
                         <tr key={row.drug} className={i % 2 === 0 ? '' : 'bg-slate-800/30'}>
                           <td className="p-2.5 text-slate-200 text-sm font-mono">
                             <div className="flex items-center gap-2.5">
-                              <span
-                                className="w-2 h-2 rounded-sm"
-                                style={{ background: categoryColors[row.category] }}
-                              />
+                              <span className="w-2 h-2 rounded-sm" style={{ background: categoryColors[row.category] }} />
                               {row.drug}
                             </div>
                           </td>
-                          <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">{row.nutt2010}</td>
-                          <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">{row.australia2019}</td>
-                          <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">{row.nz2023}</td>
-                          <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">{row.europe2015}</td>
-                          <td className="text-center p-2.5 text-green-500 text-sm font-mono font-bold">{averageHarm(row.drug)}</td>
-                          <td className={`text-center p-2.5 text-sm font-mono ${range > 4 ? 'text-amber-400' : 'text-slate-500'}`}>
+                          <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">
+                            {row.nutt2010}
+                          </td>
+                          <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">
+                            {row.australia2019}
+                          </td>
+                          <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">
+                            {row.nz2023}
+                          </td>
+                          <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">
+                            {row.europe2015}
+                          </td>
+                          <td className="text-center p-2.5 text-green-500 text-sm font-mono font-bold">
+                            {averageHarm(row.drug)}
+                          </td>
+                          <td
+                            className={`text-center p-2.5 text-sm font-mono ${range > 4 ? 'text-amber-400' : 'text-slate-500'}`}
+                          >
                             ±{range}
                           </td>
                         </tr>
@@ -432,10 +693,7 @@ export default function DrugHarmChart() {
         <div className="flex flex-wrap gap-4 mt-6 mb-6 justify-center">
           {(Object.entries(categoryLabels) as [Category, string][]).map(([key, label]) => (
             <div key={key} className="flex items-center gap-2">
-              <div
-                className="w-3 h-3 rounded-sm"
-                style={{ background: categoryColors[key] }}
-              />
+              <div className="w-3 h-3 rounded-sm" style={{ background: categoryColors[key] }} />
               <span className="text-slate-400 text-xs font-mono">{label}</span>
             </div>
           ))}
@@ -444,19 +702,20 @@ export default function DrugHarmChart() {
         {/* Methodology Note */}
         <div className="mt-6 px-5 py-4 bg-indigo-500/10 rounded-lg border border-indigo-500/20">
           <p className="text-indigo-300 text-xs leading-relaxed">
-            <strong>Methodology:</strong> Scores represent harm to the individual user (not harm to others/society)
-            using Multi-Criteria Decision Analysis with swing weighting. Criteria include drug-specific mortality,
-            drug-related mortality, drug-specific damage, drug-related damage, dependence, drug-specific impairment
-            of mental functioning, drug-related impairment of mental functioning, loss of tangibles, and loss of relationships.
-            Scale: 0 (no harm) to 100 (maximum possible harm).
+            <strong>Methodology:</strong> Scores use Multi-Criteria Decision Analysis with swing weighting. The 16
+            criteria are divided into harm to users (9 criteria: mortality, physical damage, dependence, mental
+            impairment, loss of tangibles/relationships) and harm to others (7 criteria: injury, crime, environmental
+            damage, family adversities, international damage, economic cost, community impact). Scale: 0 (no harm) to
+            100 (maximum possible harm).
           </p>
         </div>
 
         {/* Sources */}
         <div className="mt-4 text-slate-500 text-xs leading-relaxed">
           <p>
-            <strong>Sources:</strong> Nutt DJ et al. (2010) The Lancet 376:1558-65; Bonomo Y et al. (2019) J Psychopharmacol 33(7):759-768;
-            Crossin R et al. (2023) J Psychopharmacol 37(8):801-815; van Amsterdam J et al. (2015) J Psychopharmacol 29(6):655-60
+            <strong>Sources:</strong> Nutt DJ et al. (2010) The Lancet 376:1558-65; Bonomo Y et al. (2019) J
+            Psychopharmacol 33(7):759-768; Crossin R et al. (2023) J Psychopharmacol 37(8):801-815; van Amsterdam J et
+            al. (2015) J Psychopharmacol 29(6):655-60
           </p>
         </div>
       </div>
