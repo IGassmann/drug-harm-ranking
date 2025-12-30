@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import CriteriaToggles from './CriteriaToggles';
 import {
   type CriteriaKey,
@@ -14,49 +14,28 @@ import {
 
 // Data extracted from key MCDA studies - Harm to Users scores (normalized to 0-100 scale)
 const harmData = [
-  { drug: 'Heroin', nutt2010: 34, australia2019: 36, nz2023: 38, europe2015: 33, category: 'opioid' },
-  { drug: 'Crack Cocaine', nutt2010: 37, australia2019: 34, nz2023: 35, europe2015: 35, category: 'stimulant' },
-  { drug: 'Methamphetamine', nutt2010: 32, australia2019: 33, nz2023: 36, europe2015: 30, category: 'stimulant' },
-  { drug: 'Alcohol', nutt2010: 26, australia2019: 29, nz2023: 27, europe2015: 25, category: 'depressant' },
-  { drug: 'Cocaine', nutt2010: 27, australia2019: 25, nz2023: 24, europe2015: 26, category: 'stimulant' },
-  { drug: 'Tobacco', nutt2010: 26, australia2019: 24, nz2023: 22, europe2015: 23, category: 'other' },
-  { drug: 'Amphetamine', nutt2010: 23, australia2019: 21, nz2023: 22, europe2015: 20, category: 'stimulant' },
-  { drug: 'Cannabis', nutt2010: 20, australia2019: 18, nz2023: 16, europe2015: 17, category: 'cannabinoid' },
-  { drug: 'GHB', nutt2010: 18, australia2019: 16, nz2023: 15, europe2015: 16, category: 'depressant' },
-  { drug: 'Benzodiazepines', nutt2010: 15, australia2019: 17, nz2023: 18, europe2015: 14, category: 'depressant' },
-  { drug: 'Ketamine', nutt2010: 15, australia2019: 14, nz2023: 13, europe2015: 13, category: 'dissociative' },
-  { drug: 'Methadone', nutt2010: 14, australia2019: 15, nz2023: 14, europe2015: 13, category: 'opioid' },
-  { drug: 'Mephedrone', nutt2010: 13, australia2019: 12, nz2023: 11, europe2015: 12, category: 'stimulant' },
-  { drug: 'Anabolic Steroids', nutt2010: 10, australia2019: 9, nz2023: 8, europe2015: 9, category: 'other' },
-  { drug: 'MDMA (Ecstasy)', nutt2010: 9, australia2019: 8, nz2023: 9, europe2015: 8, category: 'stimulant' },
-  { drug: 'Khat', nutt2010: 9, australia2019: 7, nz2023: 6, europe2015: 8, category: 'stimulant' },
-  { drug: 'LSD', nutt2010: 7, australia2019: 6, nz2023: 5, europe2015: 6, category: 'psychedelic' },
-  { drug: 'Buprenorphine', nutt2010: 8, australia2019: 9, nz2023: 8, europe2015: 7, category: 'opioid' },
-  { drug: 'Psilocybin Mushrooms', nutt2010: 5, australia2019: 4, nz2023: 4, europe2015: 5, category: 'psychedelic' },
+  { drug: 'Heroin', nutt2010: 34, australia2019: 36, nz2023: 38, europe2015: 33 },
+  { drug: 'Crack Cocaine', nutt2010: 37, australia2019: 34, nz2023: 35, europe2015: 35 },
+  { drug: 'Methamphetamine', nutt2010: 32, australia2019: 33, nz2023: 36, europe2015: 30 },
+  { drug: 'Alcohol', nutt2010: 26, australia2019: 29, nz2023: 27, europe2015: 25 },
+  { drug: 'Cocaine', nutt2010: 27, australia2019: 25, nz2023: 24, europe2015: 26 },
+  { drug: 'Tobacco', nutt2010: 26, australia2019: 24, nz2023: 22, europe2015: 23 },
+  { drug: 'Amphetamine', nutt2010: 23, australia2019: 21, nz2023: 22, europe2015: 20 },
+  { drug: 'Cannabis', nutt2010: 20, australia2019: 18, nz2023: 16, europe2015: 17 },
+  { drug: 'GHB', nutt2010: 18, australia2019: 16, nz2023: 15, europe2015: 16 },
+  { drug: 'Benzodiazepines', nutt2010: 15, australia2019: 17, nz2023: 18, europe2015: 14 },
+  { drug: 'Ketamine', nutt2010: 15, australia2019: 14, nz2023: 13, europe2015: 13 },
+  { drug: 'Methadone', nutt2010: 14, australia2019: 15, nz2023: 14, europe2015: 13 },
+  { drug: 'Mephedrone', nutt2010: 13, australia2019: 12, nz2023: 11, europe2015: 12 },
+  { drug: 'Anabolic Steroids', nutt2010: 10, australia2019: 9, nz2023: 8, europe2015: 9 },
+  { drug: 'MDMA (Ecstasy)', nutt2010: 9, australia2019: 8, nz2023: 9, europe2015: 8 },
+  { drug: 'Khat', nutt2010: 9, australia2019: 7, nz2023: 6, europe2015: 8 },
+  { drug: 'LSD', nutt2010: 7, australia2019: 6, nz2023: 5, europe2015: 6 },
+  { drug: 'Buprenorphine', nutt2010: 8, australia2019: 9, nz2023: 8, europe2015: 7 },
+  { drug: 'Psilocybin Mushrooms', nutt2010: 5, australia2019: 4, nz2023: 4, europe2015: 5 },
 ] as const;
 
-type Category = (typeof harmData)[number]['category'];
 type StudyKey = 'nutt2010' | 'australia2019' | 'nz2023' | 'europe2015';
-
-const categoryColors: Record<Category, string> = {
-  opioid: '#dc2626',
-  stimulant: '#f97316',
-  depressant: '#8b5cf6',
-  cannabinoid: '#22c55e',
-  dissociative: '#06b6d4',
-  psychedelic: '#ec4899',
-  other: '#6b7280',
-};
-
-const categoryLabels: Record<Category, string> = {
-  opioid: 'Opioids',
-  stimulant: 'Stimulants',
-  depressant: 'Depressants',
-  cannabinoid: 'Cannabinoids',
-  dissociative: 'Dissociatives',
-  psychedelic: 'Psychedelics',
-  other: 'Other',
-};
 
 interface StudyInfo {
   name: string;
@@ -126,19 +105,10 @@ interface StackedTooltipProps {
 function StackedTooltip({ active, payload, label }: StackedTooltipProps) {
   if (active && payload && payload.length) {
     const total = payload.reduce((sum, entry) => sum + entry.value, 0);
-    const drugData = drugCriteriaScores.find((d) => d.drug === label);
 
     return (
       <div className="bg-slate-900/95 border border-slate-600/30 rounded-lg p-3 shadow-xl max-w-xs">
-        <p className="font-mono font-bold text-sm text-slate-50 mb-1">{label}</p>
-        {drugData && (
-          <p
-            className="font-mono text-xs mb-2 uppercase tracking-wide"
-            style={{ color: categoryColors[drugData.category] }}
-          >
-            {categoryLabels[drugData.category]}
-          </p>
-        )}
+        <p className="font-mono font-bold text-sm text-slate-50 mb-2">{label}</p>
         <p className="font-mono text-xs text-slate-300 mb-2 border-b border-slate-700 pb-2">
           Total: <span className="font-bold">{total}</span>
         </p>
@@ -179,13 +149,9 @@ interface TooltipProps {
 
 function CustomTooltip({ active, payload, label }: TooltipProps) {
   if (active && payload && payload.length) {
-    const data = payload[0].payload;
     return (
       <div className="bg-slate-900/95 border border-slate-600/30 rounded-lg p-3 shadow-xl">
         <p className="font-mono font-bold text-sm text-slate-50 mb-2">{label}</p>
-        <p className="font-mono text-xs mb-2 uppercase tracking-wide" style={{ color: categoryColors[data.category] }}>
-          {categoryLabels[data.category]}
-        </p>
         {payload.map((entry, index) => (
           <p key={index} className="font-mono text-xs text-slate-400 my-1">
             {studyInfo[entry.dataKey as StudyKey]?.name}:{' '}
@@ -482,11 +448,13 @@ export default function DrugHarmChart() {
                       width={130}
                     />
                     <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey={selectedStudy} radius={[0, 4, 4, 0]} maxBarSize={20}>
-                      {sortedData.map((entry, index) => (
-                        <Cell key={index} fill={categoryColors[entry.category]} fillOpacity={0.85} />
-                      ))}
-                    </Bar>
+                    <Bar
+                      dataKey={selectedStudy}
+                      radius={[0, 4, 4, 0]}
+                      maxBarSize={20}
+                      fill={studyInfo[selectedStudy].color}
+                      fillOpacity={0.85}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -643,10 +611,7 @@ export default function DrugHarmChart() {
                       return (
                         <tr key={row.drug} className={i % 2 === 0 ? '' : 'bg-slate-800/30'}>
                           <td className="p-2.5 text-slate-200 text-sm font-mono">
-                            <div className="flex items-center gap-2.5">
-                              <span className="w-2 h-2 rounded-sm" style={{ background: categoryColors[row.category] }} />
-                              {row.drug}
-                            </div>
+                            {row.drug}
                           </td>
                           <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">
                             {row.nutt2010}
@@ -677,16 +642,6 @@ export default function DrugHarmChart() {
             </div>
           </>
         )}
-
-        {/* Category Legend */}
-        <div className="flex flex-wrap gap-4 mt-6 mb-6 justify-center">
-          {(Object.entries(categoryLabels) as [Category, string][]).map(([key, label]) => (
-            <div key={key} className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm" style={{ background: categoryColors[key] }} />
-              <span className="text-slate-400 text-xs font-mono">{label}</span>
-            </div>
-          ))}
-        </div>
 
         {/* Methodology Note */}
         <div className="mt-6 px-5 py-4 bg-indigo-500/10 rounded-lg border border-indigo-500/20">
