@@ -183,7 +183,6 @@ function ComparisonTooltip({ active, payload, label }: TooltipProps) {
 export default function DrugHarmChart() {
   const [selectedStudy, setSelectedStudy] = useState<StudyKey>('nutt2010');
   const [activeTab, setActiveTab] = useState<'single' | 'comparison'>('single');
-  const [showCriteriaBreakdown, setShowCriteriaBreakdown] = useState(true);
 
   // Initialize with all criteria enabled
   const [enabledCriteria, setEnabledCriteria] = useState<Set<CriteriaKey>>(
@@ -255,7 +254,7 @@ export default function DrugHarmChart() {
     return ((d.nutt2010 + d.australia2019 + d.nz2023 + d.europe2015) / 4).toFixed(1);
   };
 
-  const showStackedChart = selectedStudy === 'nutt2010' && showCriteriaBreakdown;
+  const showStackedChart = selectedStudy === 'nutt2010';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-8 font-sans">
@@ -345,23 +344,6 @@ export default function DrugHarmChart() {
                 </div>
               </div>
             </div>
-
-            {/* Criteria Breakdown Toggle (only for UK 2010) */}
-            {studyInfo[selectedStudy].hasCriteriaData && (
-              <div className="mb-4">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showCriteriaBreakdown}
-                    onChange={(e) => setShowCriteriaBreakdown(e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900"
-                  />
-                  <span className="text-sm font-mono text-slate-300">
-                    Show criteria breakdown
-                  </span>
-                </label>
-              </div>
-            )}
 
             {/* Criteria Toggles */}
             {showStackedChart && (
