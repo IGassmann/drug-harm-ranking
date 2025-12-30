@@ -2,7 +2,7 @@
 
 Interactive visualization of drug harm rankings from peer-reviewed Multi-Criteria Decision Analysis (MCDA) studies.
 
-**Live demo:** https://drug-user-harm-ranking.vercel.app
+**Live demo:** https://drug-harm-ranking.vercel.app
 
 ## Features
 
