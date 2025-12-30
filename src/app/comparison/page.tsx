@@ -1,12 +1,12 @@
 import { Suspense } from 'react';
 import ChartLayout from '@/components/ChartLayout';
-import SingleStudyView from '@/components/SingleStudyView';
+import ComparisonView from '@/components/ComparisonView';
 
-export default function Home() {
+export default function ComparisonPage() {
   return (
     <ChartLayout>
       <Suspense fallback={<div className="animate-pulse bg-slate-800/40 rounded-xl h-96" />}>
-        <SingleStudyView studyKey="nutt2010" />
+        <ComparisonView />
       </Suspense>
     </ChartLayout>
   );
