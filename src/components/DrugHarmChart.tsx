@@ -62,8 +62,6 @@ interface StudyInfo {
   name: string;
   fullName: string;
   journal: string;
-  experts: number;
-  trust: number;
   color: string;
   description: string;
   hasCriteriaData: boolean;
@@ -74,41 +72,33 @@ const studyInfo: Record<StudyKey, StudyInfo> = {
     name: 'UK 2010',
     fullName: 'Nutt et al. (2010)',
     journal: 'The Lancet',
-    experts: 15,
-    trust: 10,
     color: '#6366f1',
     description:
-      'The foundational gold-standard MCDA study. Used 16 harm criteria with swing weighting. Published in The Lancet (highest impact factor). Most cited drug harm ranking study. Limitation: relatively small expert panel of ~15 specialists.',
+      'The foundational gold-standard MCDA study. Used 16 harm criteria with swing weighting. Published in The Lancet (highest impact factor). Most cited drug harm ranking study.',
     hasCriteriaData: true,
   },
   australia2019: {
     name: 'Australia 2019',
     fullName: 'Bonomo et al. (2019)',
     journal: 'J Psychopharmacology',
-    experts: 25,
-    trust: 9,
     color: '#22c55e',
     description:
-      'Rigorous MCDA replication with 25 diverse Australian experts. Added supplementary prevalence-adjusted analysis to account for local usage patterns. Conducted via intensive single-day workshop. High methodological quality.',
+      'Rigorous MCDA replication with diverse Australian experts. Added supplementary prevalence-adjusted analysis to account for local usage patterns. High methodological quality.',
     hasCriteriaData: false,
   },
   nz2023: {
     name: 'New Zealand 2023',
     fullName: 'Crossin et al. (2023)',
     journal: 'J Psychopharmacology',
-    experts: 23,
-    trust: 9,
     color: '#f97316',
     description:
-      'Most methodologically advanced study. Added culturally-relevant criteria including indigenous perspectives and youth-specific harm analysis. 23 diverse experts across disciplines. Most recent data reflects current drug landscape.',
+      'Most methodologically advanced study. Added culturally-relevant criteria including indigenous perspectives and youth-specific harm analysis. Most recent data reflects current drug landscape.',
     hasCriteriaData: false,
   },
   europe2015: {
     name: 'Europe 2015',
     fullName: 'van Amsterdam et al. (2015)',
     journal: 'J Psychopharmacology',
-    experts: 20,
-    trust: 7,
     color: '#ec4899',
     description:
       'EU-wide expert panel providing international perspective. Results validated against original UK panel with high correlation (r=0.93). Demonstrates cross-cultural consistency of harm rankings across Western nations.',
@@ -365,29 +355,16 @@ export default function DrugHarmChart() {
             >
               <div className="flex items-start gap-6 flex-wrap">
                 <div className="flex-1 min-w-[300px]">
-                  <div className="flex items-center gap-3 mb-3">
-                    <h3 className="font-mono font-bold text-lg" style={{ color: studyInfo[selectedStudy].color }}>
-                      {studyInfo[selectedStudy].fullName}
-                    </h3>
-                    <span className="bg-green-500/20 text-green-500 px-2.5 py-1 rounded-full text-xs font-semibold font-mono">
-                      Trust: {studyInfo[selectedStudy].trust}/10
-                    </span>
-                  </div>
+                  <h3 className="font-mono font-bold text-lg mb-3" style={{ color: studyInfo[selectedStudy].color }}>
+                    {studyInfo[selectedStudy].fullName}
+                  </h3>
                   <p className="text-slate-400 text-sm leading-relaxed">{studyInfo[selectedStudy].description}</p>
                 </div>
-                <div className="flex gap-6 px-5 py-3 bg-slate-900/40 rounded-lg">
-                  <div>
-                    <span className="text-slate-500 text-[10px] uppercase tracking-wide">Journal</span>
-                    <p className="text-slate-50 font-semibold text-sm mt-0.5 font-mono">
-                      {studyInfo[selectedStudy].journal}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 text-[10px] uppercase tracking-wide">Experts</span>
-                    <p className="text-slate-50 font-semibold text-sm mt-0.5 font-mono">
-                      {studyInfo[selectedStudy].experts}
-                    </p>
-                  </div>
+                <div className="px-5 py-3 bg-slate-900/40 rounded-lg">
+                  <span className="text-slate-500 text-[10px] uppercase tracking-wide">Journal</span>
+                  <p className="text-slate-50 font-semibold text-sm mt-0.5 font-mono">
+                    {studyInfo[selectedStudy].journal}
+                  </p>
                 </div>
               </div>
             </div>
@@ -588,16 +565,11 @@ export default function DrugHarmChart() {
                   className="bg-slate-800/40 rounded-xl p-4"
                   style={{ borderLeft: `4px solid ${info.color}` }}
                 >
-                  <div className="flex items-center gap-2.5 mb-2">
-                    <h4 className="font-mono font-bold text-sm" style={{ color: info.color }}>
-                      {info.fullName}
-                    </h4>
-                    <span className="bg-green-500/15 text-green-500 px-2 py-0.5 rounded-full text-[10px] font-semibold">
-                      {info.trust}/10
-                    </span>
-                  </div>
+                  <h4 className="font-mono font-bold text-sm mb-2" style={{ color: info.color }}>
+                    {info.fullName}
+                  </h4>
                   <p className="text-slate-500 text-xs mb-2">
-                    {info.journal} • {info.experts} experts
+                    {info.journal}
                   </p>
                   <p className="text-slate-400 text-xs leading-relaxed">{info.description}</p>
                 </div>
