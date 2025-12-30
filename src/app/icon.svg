@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <rect width="32" height="32" rx="6" fill="#1e293b"/>
-  <!-- Bar chart -->
-  <rect x="5" y="4" width="5" height="4" rx="1" fill="#4ade80"/>
-  <rect x="13" y="4" width="5" height="7" rx="1" fill="#fb923c"/>
+  <!-- Bar chart (bars grow upward from baseline at y=14) -->
+  <rect x="5" y="10" width="5" height="4" rx="1" fill="#4ade80"/>
+  <rect x="13" y="7" width="5" height="7" rx="1" fill="#fb923c"/>
   <rect x="21" y="4" width="5" height="10" rx="1" fill="#f87171"/>
   <!-- Capsule pill -->
   <path d="M9.5 17 L16 17 L16 28 L9.5 28 A5.5 5.5 0 0 1 9.5 17 Z" fill="#a78bfa"/>
