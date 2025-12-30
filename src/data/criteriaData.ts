@@ -50,12 +50,15 @@ export type NZOthersCriteriaKey =
   | 'community'
   | 'intergenerationalHarm'; // New criterion
 
+// Europe 2015 uses simplified 2-category breakdown (only user/others totals available)
+export type Europe2015CriteriaKey = 'harmToUsers' | 'harmToOthers';
+
 // Combined types
 export type UKCriteriaKey = UKUserCriteriaKey | UKOthersCriteriaKey;
 export type NZCriteriaKey = NZUserCriteriaKey | NZOthersCriteriaKey;
 
 // Union type for all possible criteria keys
-export type CriteriaKey = UKCriteriaKey | NZCriteriaKey;
+export type CriteriaKey = UKCriteriaKey | NZCriteriaKey | Europe2015CriteriaKey;
 
 export type StudyId = 'uk2010' | 'australia2019' | 'newzealand2023' | 'europe2015';
 
@@ -1890,6 +1893,68 @@ export const nzDrugCriteriaScores: NZDrugCriteriaScores[] = [
 ];
 
 // =============================================================================
+// EUROPE 2015 CRITERIA & DATA (van Amsterdam et al.)
+// Simplified breakdown: only user/others aggregate totals available
+// =============================================================================
+
+export const europe2015UserCriteriaMetadata: CriteriaMetadata[] = [
+  {
+    key: 'harmToUsers' as CriteriaKey,
+    label: 'Harm to Users',
+    shortLabel: 'Users',
+    description: 'Aggregate harm to drug users (physical, psychological, social)',
+    weight: 46.0,
+    color: '#ec4899', // Pink - matches harm-to-users theme
+  },
+];
+
+export const europe2015OthersCriteriaMetadata: CriteriaMetadata[] = [
+  {
+    key: 'harmToOthers' as CriteriaKey,
+    label: 'Harm to Others',
+    shortLabel: 'Others',
+    description: 'Aggregate harm to others (injury, crime, family, economic, community)',
+    weight: 54.0,
+    color: '#0ea5e9', // Cyan - matches harm-to-others theme
+  },
+];
+
+export const europe2015CriteriaMetadata: CriteriaMetadata[] = [
+  ...europe2015UserCriteriaMetadata,
+  ...europe2015OthersCriteriaMetadata,
+];
+
+export interface Europe2015DrugScores extends DrugCategory {
+  drug: string;
+  harmToUsers: number;
+  harmToOthers: number;
+}
+
+// Europe 2015 scores from van Amsterdam et al. Figure 2
+// User/others split estimated from stacked bar chart
+export const europe2015DrugCriteriaScores: Europe2015DrugScores[] = [
+  { drug: 'Alcohol', category: 'depressant', harmToUsers: 25, harmToOthers: 47 },
+  { drug: 'Heroin', category: 'opioid', harmToUsers: 50, harmToOthers: 23 },
+  { drug: 'Crack Cocaine', category: 'stimulant', harmToUsers: 47, harmToOthers: 17 },
+  { drug: 'Methamphetamine', category: 'stimulant', harmToUsers: 40, harmToOthers: 12 },
+  { drug: 'Cocaine', category: 'stimulant', harmToUsers: 30, harmToOthers: 17 },
+  { drug: 'Tobacco', category: 'other', harmToUsers: 26, harmToOthers: 10 },
+  { drug: 'Amphetamine', category: 'stimulant', harmToUsers: 25, harmToOthers: 13 },
+  { drug: 'Cannabis', category: 'cannabinoid', harmToUsers: 17, harmToOthers: 10 },
+  { drug: 'GHB', category: 'depressant', harmToUsers: 20, harmToOthers: 5 },
+  { drug: 'Benzodiazepines', category: 'depressant', harmToUsers: 18, harmToOthers: 8 },
+  { drug: 'Ketamine', category: 'dissociative', harmToUsers: 18, harmToOthers: 7 },
+  { drug: 'Methadone', category: 'opioid', harmToUsers: 22, harmToOthers: 5 },
+  { drug: 'Mephedrone', category: 'stimulant', harmToUsers: 18, harmToOthers: 7 },
+  { drug: 'Anabolic Steroids', category: 'other', harmToUsers: 13, harmToOthers: 3 },
+  { drug: 'MDMA (Ecstasy)', category: 'stimulant', harmToUsers: 12, harmToOthers: 4 },
+  { drug: 'Khat', category: 'stimulant', harmToUsers: 10, harmToOthers: 5 },
+  { drug: 'LSD', category: 'psychedelic', harmToUsers: 10, harmToOthers: 2 },
+  { drug: 'Buprenorphine', category: 'opioid', harmToUsers: 12, harmToOthers: 3 },
+  { drug: 'Psilocybin Mushrooms', category: 'psychedelic', harmToUsers: 8, harmToOthers: 1 },
+];
+
+// =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
 
@@ -1897,7 +1962,7 @@ export type StudyCriteriaData = {
   userMetadata: CriteriaMetadata[];
   othersMetadata: CriteriaMetadata[];
   metadata: CriteriaMetadata[]; // Combined for backwards compatibility
-  scores: (UKDrugCriteriaScores | NZDrugCriteriaScores)[];
+  scores: (UKDrugCriteriaScores | NZDrugCriteriaScores | Europe2015DrugScores)[];
   hasCriteriaBreakdown: boolean;
 };
 
@@ -1928,13 +1993,13 @@ export function getCriteriaDataForStudy(studyId: StudyId): StudyCriteriaData {
         hasCriteriaBreakdown: true,
       };
     case 'europe2015':
-      // Europe 2015 does not have criteria breakdown data available
+      // Europe 2015 has simplified user/others breakdown (not individual criteria)
       return {
-        userMetadata: [],
-        othersMetadata: [],
-        metadata: [],
-        scores: [],
-        hasCriteriaBreakdown: false,
+        userMetadata: europe2015UserCriteriaMetadata,
+        othersMetadata: europe2015OthersCriteriaMetadata,
+        metadata: europe2015CriteriaMetadata,
+        scores: europe2015DrugCriteriaScores,
+        hasCriteriaBreakdown: true,
       };
     default:
       return {
@@ -1949,10 +2014,18 @@ export function getCriteriaDataForStudy(studyId: StudyId): StudyCriteriaData {
 
 // Calculate harm to users for a drug
 export function calculateUserHarm(
-  scores: UKDrugCriteriaScores | NZDrugCriteriaScores,
+  scores: UKDrugCriteriaScores | NZDrugCriteriaScores | Europe2015DrugScores,
   enabledCriteria?: Set<CriteriaKey>,
   studyId: StudyId = 'uk2010'
 ): number {
+  if (studyId === 'europe2015') {
+    const euScores = scores as Europe2015DrugScores;
+    if (!enabledCriteria || enabledCriteria.has('harmToUsers')) {
+      return euScores.harmToUsers ?? 0;
+    }
+    return 0;
+  }
+
   if (studyId === 'newzealand2023') {
     const nzScores = scores as NZDrugCriteriaScores;
     const nzUserKeys: NZUserCriteriaKey[] = [
@@ -1997,10 +2070,18 @@ export function calculateUserHarm(
 
 // Calculate harm to others for a drug
 export function calculateOthersHarm(
-  scores: UKDrugCriteriaScores | NZDrugCriteriaScores,
+  scores: UKDrugCriteriaScores | NZDrugCriteriaScores | Europe2015DrugScores,
   enabledCriteria?: Set<CriteriaKey>,
   studyId: StudyId = 'uk2010'
 ): number {
+  if (studyId === 'europe2015') {
+    const euScores = scores as Europe2015DrugScores;
+    if (!enabledCriteria || enabledCriteria.has('harmToOthers')) {
+      return euScores.harmToOthers ?? 0;
+    }
+    return 0;
+  }
+
   if (studyId === 'newzealand2023') {
     const nzScores = scores as NZDrugCriteriaScores;
     const nzOthersKeys: NZOthersCriteriaKey[] = [
@@ -2042,7 +2123,7 @@ export function calculateOthersHarm(
 
 // Calculate total harm (user + others)
 export function calculateTotalHarm(
-  scores: UKDrugCriteriaScores | NZDrugCriteriaScores,
+  scores: UKDrugCriteriaScores | NZDrugCriteriaScores | Europe2015DrugScores,
   enabledCriteria?: Set<CriteriaKey>,
   studyId: StudyId = 'uk2010'
 ): number {

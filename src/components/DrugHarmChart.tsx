@@ -8,6 +8,8 @@ import {
   type StudyId,
   getCriteriaDataForStudy,
   calculateTotalHarm,
+  calculateUserHarm,
+  calculateOthersHarm,
 } from '@/data/criteriaData';
 
 // Data extracted from key MCDA studies - Harm to Users scores (normalized to 0-100 scale)
@@ -184,9 +186,60 @@ function ComparisonTooltip({ active, payload, label }: TooltipProps) {
   return null;
 }
 
+// Stacked comparison tooltip showing user/others breakdown per study
+interface ComparisonStackedTooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    dataKey: string;
+    value: number;
+    color: string;
+    name: string;
+    payload: Record<string, number | string>;
+  }>;
+  label?: string;
+}
+
+function ComparisonStackedTooltip({ active, payload, label }: ComparisonStackedTooltipProps) {
+  if (active && payload && payload.length && payload[0]?.payload) {
+    const data = payload[0].payload;
+
+    const studies = [
+      { name: 'UK 2010', users: data.uk2010_users as number, others: data.uk2010_others as number, color: '#6366f1' },
+      { name: 'Australia 2019', users: data.aus2019_users as number, others: data.aus2019_others as number, color: '#22c55e' },
+      { name: 'NZ 2023', users: data.nz2023_users as number, others: data.nz2023_others as number, color: '#f97316' },
+      { name: 'Europe 2015', users: data.eu2015_users as number, others: data.eu2015_others as number, color: '#ec4899' },
+    ].filter(s => s.users > 0 || s.others > 0);
+
+    return (
+      <div className="bg-slate-900/95 border border-slate-600/30 rounded-lg p-3 shadow-xl min-w-[200px]">
+        <p className="font-mono font-bold text-sm text-slate-50 mb-3">{label}</p>
+        <div className="space-y-2">
+          {studies.map((study) => (
+            <div key={study.name} className="border-b border-slate-700/50 pb-2 last:border-0 last:pb-0">
+              <p className="font-mono text-xs font-semibold mb-1" style={{ color: study.color }}>
+                {study.name}
+              </p>
+              <div className="flex justify-between gap-4 text-[11px] font-mono">
+                <span className="text-pink-400">Users: <span className="text-slate-200">{study.users}</span></span>
+                <span className="text-cyan-400">Others: <span className="text-slate-200">{study.others}</span></span>
+                <span className="text-slate-400">Total: <span className="text-slate-100 font-semibold">{study.users + study.others}</span></span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
 export default function DrugHarmChart() {
   const [selectedStudy, setSelectedStudy] = useState<ChartStudyKey>('nutt2010');
   const [activeTab, setActiveTab] = useState<'single' | 'comparison'>('single');
+
+  // Comparison view toggles for user/others harm
+  const [showComparisonUsers, setShowComparisonUsers] = useState(true);
+  const [showComparisonOthers, setShowComparisonOthers] = useState(true);
 
   // Get study-specific criteria data
   const studyId = studyKeyToId[selectedStudy];
@@ -287,6 +340,80 @@ export default function DrugHarmChart() {
   }, [stackedData]);
 
   const sortedData = [...harmData].sort((a, b) => b[selectedStudy] - a[selectedStudy]);
+
+  // Create comparison data with user/others breakdown for each study
+  const comparisonStackedData = useMemo(() => {
+    // Get all study criteria data
+    const ukData = getCriteriaDataForStudy('uk2010');
+    const ausData = getCriteriaDataForStudy('australia2019');
+    const nzData = getCriteriaDataForStudy('newzealand2023');
+    const euData = getCriteriaDataForStudy('europe2015');
+
+    // Find common drugs across all studies
+    const commonDrugs = new Set<string>();
+
+    // Build a map of drug names to scores for each study
+    const ukScoresMap = new Map(ukData.scores.map(s => [s.drug, s]));
+    const ausScoresMap = new Map(ausData.scores.map(s => [s.drug, s]));
+    const nzScoresMap = new Map(nzData.scores.map(s => [s.drug, s]));
+    const euScoresMap = new Map(euData.scores.map(s => [s.drug, s]));
+
+    // Find drugs that exist in all studies (using the Europe 2015 list as base since it's smallest)
+    euData.scores.forEach(s => {
+      if (ukScoresMap.has(s.drug) || ausScoresMap.has(s.drug) || nzScoresMap.has(s.drug)) {
+        commonDrugs.add(s.drug);
+      }
+    });
+
+    // Also add drugs from other studies
+    ukData.scores.forEach(s => commonDrugs.add(s.drug));
+
+    const result = Array.from(commonDrugs).map(drug => {
+      const ukScore = ukScoresMap.get(drug);
+      const ausScore = ausScoresMap.get(drug);
+      const nzScore = nzScoresMap.get(drug);
+      const euScore = euScoresMap.get(drug);
+
+      return {
+        drug,
+        // UK 2010
+        uk2010_users: showComparisonUsers && ukScore ? calculateUserHarm(ukScore, undefined, 'uk2010') : 0,
+        uk2010_others: showComparisonOthers && ukScore ? calculateOthersHarm(ukScore, undefined, 'uk2010') : 0,
+        // Australia 2019
+        aus2019_users: showComparisonUsers && ausScore ? calculateUserHarm(ausScore, undefined, 'australia2019') : 0,
+        aus2019_others: showComparisonOthers && ausScore ? calculateOthersHarm(ausScore, undefined, 'australia2019') : 0,
+        // New Zealand 2023
+        nz2023_users: showComparisonUsers && nzScore ? calculateUserHarm(nzScore, undefined, 'newzealand2023') : 0,
+        nz2023_others: showComparisonOthers && nzScore ? calculateOthersHarm(nzScore, undefined, 'newzealand2023') : 0,
+        // Europe 2015
+        eu2015_users: showComparisonUsers && euScore ? calculateUserHarm(euScore, undefined, 'europe2015') : 0,
+        eu2015_others: showComparisonOthers && euScore ? calculateOthersHarm(euScore, undefined, 'europe2015') : 0,
+      };
+    });
+
+    // Sort by average total harm
+    return result.sort((a, b) => {
+      const totalA = (a.uk2010_users + a.uk2010_others + a.aus2019_users + a.aus2019_others +
+                      a.nz2023_users + a.nz2023_others + a.eu2015_users + a.eu2015_others) / 4;
+      const totalB = (b.uk2010_users + b.uk2010_others + b.aus2019_users + b.aus2019_others +
+                      b.nz2023_users + b.nz2023_others + b.eu2015_users + b.eu2015_others) / 4;
+      return totalB - totalA;
+    });
+  }, [showComparisonUsers, showComparisonOthers]);
+
+  // Calculate max value for comparison chart
+  const maxComparisonValue = useMemo(() => {
+    if (comparisonStackedData.length === 0) return 80;
+    const maxValues = comparisonStackedData.map(d => Math.max(
+      d.uk2010_users + d.uk2010_others,
+      d.aus2019_users + d.aus2019_others,
+      d.nz2023_users + d.nz2023_others,
+      d.eu2015_users + d.eu2015_others
+    ));
+    const max = Math.max(...maxValues);
+    return Math.ceil(max / 10) * 10 + 5;
+  }, [comparisonStackedData]);
+
   const comparisonSortedData = [...harmData].sort((a, b) => {
     const avgA = (a.nutt2010 + a.australia2019 + a.nz2023 + a.europe2015) / 4;
     const avgB = (b.nutt2010 + b.australia2019 + b.nz2023 + b.europe2015) / 4;
@@ -342,24 +469,20 @@ export default function DrugHarmChart() {
           <>
             {/* Study Selection */}
             <div className="flex gap-3 mb-6 flex-wrap">
-              {(Object.entries(studyInfo) as [ChartStudyKey, StudyInfo][]).map(([key, info]) => {
-                const { hasCriteriaBreakdown: hasBreakdown } = getCriteriaDataForStudy(studyKeyToId[key]);
-                return (
-                  <button
-                    key={key}
-                    onClick={() => handleStudyChange(key)}
-                    className="px-5 py-2.5 rounded-lg font-mono text-xs font-medium transition-all"
-                    style={{
-                      border: selectedStudy === key ? `2px solid ${info.color}` : '2px solid transparent',
-                      background: selectedStudy === key ? `${info.color}20` : 'rgba(30, 41, 59, 0.6)',
-                      color: selectedStudy === key ? info.color : '#94a3b8',
-                    }}
-                  >
-                    {info.name}
-                    {hasBreakdown && <span className="ml-1.5 text-[10px] opacity-70">✦</span>}
-                  </button>
-                );
-              })}
+              {(Object.entries(studyInfo) as [ChartStudyKey, StudyInfo][]).map(([key, info]) => (
+                <button
+                  key={key}
+                  onClick={() => handleStudyChange(key)}
+                  className="px-5 py-2.5 rounded-lg font-mono text-xs font-medium transition-all"
+                  style={{
+                    border: selectedStudy === key ? `2px solid ${info.color}` : '2px solid transparent',
+                    background: selectedStudy === key ? `${info.color}20` : 'rgba(30, 41, 59, 0.6)',
+                    color: selectedStudy === key ? info.color : '#94a3b8',
+                  }}
+                >
+                  {info.name}
+                </button>
+              ))}
             </div>
 
             {/* Study Info Card */}
@@ -461,16 +584,8 @@ export default function DrugHarmChart() {
                   </div>
                 </>
               ) : (
-                // Original single-color chart for studies without criteria breakdown
+                // Fallback single-color chart for studies without criteria breakdown
                 <>
-                  {selectedStudy === 'europe2015' && (
-                    <div className="mb-4 px-4 py-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
-                      <p className="text-amber-300 text-xs leading-relaxed">
-                        <strong>Note:</strong> The Europe 2015 study does not provide individual criterion scores in the
-                        published paper. Only aggregate harm-to-users vs harm-to-others totals are available.
-                      </p>
-                    </div>
-                  )}
                   <ResponsiveContainer width="100%" height={600}>
                     <BarChart data={sortedData} layout="vertical" margin={{ top: 0, right: 30, left: 140, bottom: 0 }}>
                       <XAxis
@@ -501,30 +616,70 @@ export default function DrugHarmChart() {
                 </>
               )}
             </div>
-
-            {/* Note about criteria data availability */}
-            <p className="text-xs text-slate-500 font-mono mb-6">
-              ✦ Studies with detailed criteria breakdown available
-            </p>
           </>
         )}
 
         {activeTab === 'comparison' && (
           <>
-            {/* Cross-Study Comparison Chart */}
-            <div className="bg-slate-900/60 rounded-2xl p-6 border border-slate-700/10 mb-6">
-              <h3 className="font-mono text-base font-semibold text-slate-50 mb-5">Harm Scores Across All Studies</h3>
+            {/* Harm Type Toggles */}
+            <div className="bg-slate-800/40 rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between">
+                <h3 className="font-mono text-sm font-semibold text-slate-300">Harm Category Selection</h3>
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setShowComparisonUsers(!showComparisonUsers)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${
+                      showComparisonUsers
+                        ? 'bg-pink-500/20 border border-pink-500/40'
+                        : 'bg-slate-800/40 border border-slate-700/40 opacity-50'
+                    }`}
+                  >
+                    <div className={`w-3 h-3 rounded-sm bg-pink-500 ${showComparisonUsers ? 'opacity-100' : 'opacity-30'}`} />
+                    <span className={`text-xs font-mono ${showComparisonUsers ? 'text-pink-300' : 'text-slate-500'}`}>
+                      Harm to Users
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setShowComparisonOthers(!showComparisonOthers)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${
+                      showComparisonOthers
+                        ? 'bg-cyan-500/20 border border-cyan-500/40'
+                        : 'bg-slate-800/40 border border-slate-700/40 opacity-50'
+                    }`}
+                  >
+                    <div className={`w-3 h-3 rounded-sm bg-cyan-500 ${showComparisonOthers ? 'opacity-100' : 'opacity-30'}`} />
+                    <span className={`text-xs font-mono ${showComparisonOthers ? 'text-cyan-300' : 'text-slate-500'}`}>
+                      Harm to Others
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
 
-              <ResponsiveContainer width="100%" height={650}>
+            {/* Cross-Study Comparison Chart with User/Others breakdown */}
+            <div className="bg-slate-900/60 rounded-2xl p-6 border border-slate-700/10 mb-6">
+              <h3 className="font-mono text-base font-semibold text-slate-50 mb-2">Harm Scores Across All Studies</h3>
+              <p className="text-xs text-slate-400 mb-5">
+                {showComparisonUsers && showComparisonOthers
+                  ? 'Each bar shows harm to users (solid) and harm to others (faded)'
+                  : showComparisonUsers
+                    ? 'Showing harm to users only'
+                    : showComparisonOthers
+                      ? 'Showing harm to others only'
+                      : 'Select a harm category to display'}
+              </p>
+
+              <ResponsiveContainer width="100%" height={Math.max(800, comparisonStackedData.length * 36)}>
                 <BarChart
-                  data={comparisonSortedData}
+                  data={comparisonStackedData}
                   layout="vertical"
-                  margin={{ top: 0, right: 30, left: 140, bottom: 0 }}
+                  margin={{ top: 0, right: 30, left: 160, bottom: 0 }}
                   barCategoryGap="20%"
+                  barGap={0}
                 >
                   <XAxis
                     type="number"
-                    domain={[0, 45]}
+                    domain={[0, maxComparisonValue]}
                     tick={{ fill: '#64748b', fontSize: 11, fontFamily: 'var(--font-geist-mono)' }}
                     axisLine={{ stroke: '#334155' }}
                     tickLine={{ stroke: '#334155' }}
@@ -535,45 +690,55 @@ export default function DrugHarmChart() {
                     tick={{ fill: '#e2e8f0', fontSize: 11, fontFamily: 'var(--font-geist-mono)' }}
                     axisLine={{ stroke: '#334155' }}
                     tickLine={false}
-                    width={130}
+                    width={150}
                   />
-                  <Tooltip content={<ComparisonTooltip />} />
-                  <Legend
-                    wrapperStyle={{ paddingTop: '20px' }}
-                    formatter={(value) => (
-                      <span className="text-slate-400 text-xs font-mono">{studyInfo[value as ChartStudyKey]?.name}</span>
-                    )}
-                  />
-                  <Bar
-                    dataKey="nutt2010"
-                    name="nutt2010"
-                    fill={studyInfo.nutt2010.color}
-                    radius={[0, 2, 2, 0]}
-                    maxBarSize={8}
-                  />
-                  <Bar
-                    dataKey="australia2019"
-                    name="australia2019"
-                    fill={studyInfo.australia2019.color}
-                    radius={[0, 2, 2, 0]}
-                    maxBarSize={8}
-                  />
-                  <Bar
-                    dataKey="nz2023"
-                    name="nz2023"
-                    fill={studyInfo.nz2023.color}
-                    radius={[0, 2, 2, 0]}
-                    maxBarSize={8}
-                  />
-                  <Bar
-                    dataKey="europe2015"
-                    name="europe2015"
-                    fill={studyInfo.europe2015.color}
-                    radius={[0, 2, 2, 0]}
-                    maxBarSize={8}
-                  />
+                  <Tooltip content={<ComparisonStackedTooltip />} />
+                  {/* UK 2010 - stacked users + others */}
+                  <Bar dataKey="uk2010_users" stackId="uk2010" fill="#6366f1" name="UK Users" maxBarSize={16} />
+                  <Bar dataKey="uk2010_others" stackId="uk2010" fill="#6366f1" fillOpacity={0.4} name="UK Others" maxBarSize={16} />
+                  {/* Australia 2019 - stacked users + others */}
+                  <Bar dataKey="aus2019_users" stackId="aus2019" fill="#22c55e" name="AUS Users" maxBarSize={16} />
+                  <Bar dataKey="aus2019_others" stackId="aus2019" fill="#22c55e" fillOpacity={0.4} name="AUS Others" maxBarSize={16} />
+                  {/* New Zealand 2023 - stacked users + others */}
+                  <Bar dataKey="nz2023_users" stackId="nz2023" fill="#f97316" name="NZ Users" maxBarSize={16} />
+                  <Bar dataKey="nz2023_others" stackId="nz2023" fill="#f97316" fillOpacity={0.4} name="NZ Others" maxBarSize={16} />
+                  {/* Europe 2015 - stacked users + others */}
+                  <Bar dataKey="eu2015_users" stackId="eu2015" fill="#ec4899" name="EU Users" maxBarSize={16} />
+                  <Bar dataKey="eu2015_others" stackId="eu2015" fill="#ec4899" fillOpacity={0.4} name="EU Others" maxBarSize={16} />
                 </BarChart>
               </ResponsiveContainer>
+
+              {/* Legend */}
+              <div className="mt-4 pt-4 border-t border-slate-700/50">
+                <div className="flex flex-wrap gap-x-6 gap-y-2 justify-center">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#6366f1' }} />
+                    <span className="text-xs font-mono text-slate-400">UK 2010</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#22c55e' }} />
+                    <span className="text-xs font-mono text-slate-400">Australia 2019</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#f97316' }} />
+                    <span className="text-xs font-mono text-slate-400">NZ 2023</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#ec4899' }} />
+                    <span className="text-xs font-mono text-slate-400">Europe 2015</span>
+                  </div>
+                </div>
+                <div className="flex gap-6 justify-center mt-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-3 rounded-sm bg-slate-400" />
+                    <span className="text-xs font-mono text-slate-500">= Harm to Users (solid)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-3 rounded-sm bg-slate-400/40" />
+                    <span className="text-xs font-mono text-slate-500">= Harm to Others (faded)</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Study Legend Cards */}
@@ -599,9 +764,20 @@ export default function DrugHarmChart() {
               ))}
             </div>
 
-            {/* Summary Table */}
+            {/* Summary Table with User/Others breakdown */}
             <div className="bg-slate-900/60 rounded-2xl p-6 border border-slate-700/10">
-              <h3 className="font-mono text-base font-semibold text-slate-50 mb-4">Detailed Score Comparison</h3>
+              <h3 className="font-mono text-base font-semibold text-slate-50 mb-2">Detailed Score Comparison</h3>
+              <p className="text-xs text-slate-400 mb-4">
+                {showComparisonUsers && showComparisonOthers ? (
+                  <>Format: <span className="text-pink-400">Users</span> + <span className="text-cyan-400">Others</span> = <span className="text-slate-200">Total</span></>
+                ) : showComparisonUsers ? (
+                  <>Showing: <span className="text-pink-400">Harm to Users</span> only</>
+                ) : showComparisonOthers ? (
+                  <>Showing: <span className="text-cyan-400">Harm to Others</span> only</>
+                ) : (
+                  <>Select a harm category to display</>
+                )}
+              </p>
 
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
@@ -637,37 +813,60 @@ export default function DrugHarmChart() {
                       <th className="text-center p-3 text-green-500 text-xs font-mono uppercase border-b border-slate-700">
                         Average
                       </th>
-                      <th className="text-center p-3 text-slate-500 text-xs font-mono uppercase border-b border-slate-700">
-                        Range
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {comparisonSortedData.map((row, i) => {
-                      const values = [row.nutt2010, row.australia2019, row.nz2023, row.europe2015];
-                      const range = Math.max(...values) - Math.min(...values);
+                    {comparisonStackedData.map((row, i) => {
+                      const ukTotal = row.uk2010_users + row.uk2010_others;
+                      const ausTotal = row.aus2019_users + row.aus2019_others;
+                      const nzTotal = row.nz2023_users + row.nz2023_others;
+                      const euTotal = row.eu2015_users + row.eu2015_others;
+
+                      // Helper to render cell content based on toggle state
+                      const renderCell = (users: number, others: number, total: number) => {
+                        if (total === 0) return <span className="text-slate-600">—</span>;
+                        if (showComparisonUsers && showComparisonOthers) {
+                          return (
+                            <>
+                              <span className="text-pink-400">{users}</span>
+                              <span className="text-slate-500"> + </span>
+                              <span className="text-cyan-400">{others}</span>
+                              <span className="text-slate-500"> = </span>
+                              <span className="text-slate-100 font-semibold">{total}</span>
+                            </>
+                          );
+                        }
+                        if (showComparisonUsers) {
+                          return <span className="text-pink-400 font-semibold">{users}</span>;
+                        }
+                        if (showComparisonOthers) {
+                          return <span className="text-cyan-400 font-semibold">{others}</span>;
+                        }
+                        return <span className="text-slate-600">—</span>;
+                      };
+
                       return (
                         <tr key={row.drug} className={i % 2 === 0 ? '' : 'bg-slate-800/30'}>
                           <td className="p-2.5 text-slate-200 text-sm font-mono">{row.drug}</td>
-                          <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">
-                            {row.nutt2010}
+                          <td className="text-center p-2.5 text-xs font-mono">
+                            {renderCell(row.uk2010_users, row.uk2010_others, ukTotal)}
                           </td>
-                          <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">
-                            {row.australia2019}
+                          <td className="text-center p-2.5 text-xs font-mono">
+                            {renderCell(row.aus2019_users, row.aus2019_others, ausTotal)}
                           </td>
-                          <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">
-                            {row.nz2023}
+                          <td className="text-center p-2.5 text-xs font-mono">
+                            {renderCell(row.nz2023_users, row.nz2023_others, nzTotal)}
                           </td>
-                          <td className="text-center p-2.5 text-slate-50 text-sm font-mono font-semibold">
-                            {row.europe2015}
+                          <td className="text-center p-2.5 text-xs font-mono">
+                            {renderCell(row.eu2015_users, row.eu2015_others, euTotal)}
                           </td>
-                          <td className="text-center p-2.5 text-green-500 text-sm font-mono font-bold">
-                            {averageHarm(row.drug)}
-                          </td>
-                          <td
-                            className={`text-center p-2.5 text-sm font-mono ${range > 4 ? 'text-amber-400' : 'text-slate-500'}`}
-                          >
-                            ±{range}
+                          <td className="text-center p-2.5 text-xs font-mono">
+                            {(() => {
+                              const totals = [ukTotal, ausTotal, nzTotal, euTotal].filter(t => t > 0);
+                              if (totals.length === 0) return <span className="text-slate-600">—</span>;
+                              const avg = totals.reduce((a, b) => a + b, 0) / totals.length;
+                              return <span className="text-green-500 font-semibold">{avg.toFixed(1)}</span>;
+                            })()}
                           </td>
                         </tr>
                       );
